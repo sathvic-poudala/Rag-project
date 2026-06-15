@@ -45,6 +45,7 @@ BLOCK_PATTERNS: dict[str, re.Pattern] = {
     "context":          re.compile(r'createContext|useContext'),
 
     # Middleware & async handlers
+    "wrapped_async_handler": re.compile(r'(?:export\s+)?(?:const|let|var)\s+\w+\s*=\s*asyncHandler\s*\('),
     "middleware":       re.compile(r'(const|let|var)\s+\w+\s*=\s*(async\s*)?\(\s*req\s*,\s*res\s*(,\s*next)?\s*\)'),
     "async_handler":    re.compile(r'asyncHandler\s*\('),
 }
@@ -93,15 +94,22 @@ def _extract_imports(lines: list[str]) -> list[str]:
 
 
 def _extract_function_name(content: str) -> str | None:
+    variable_pattern = re.compile(
+        r"(?:export\s+)?(?:const|let|var)\s+(\w+)\s*="
+    )
+
+    match = variable_pattern.search(content)
+    if match:
+        return match.group(1)
+
     function_pattern = re.compile(
-        r'(const|function)\s+(\w+)\s*=?\s*(async\s*)?\('
+        r"function\s+(\w+)\s*\("
     )
 
     match = function_pattern.search(content)
-    if match is not None:
-        function_name = match.group(2)
-        return function_name
-    
+    if match:
+        return match.group(1)
+
     return None
 
 
@@ -150,9 +158,35 @@ def _build_block(lines: list[str], chunk_type: str) -> dict:
         "chunk_type": chunk_type,
     }
 
+def _get_block_type(line: str) -> str | None:
+    for name, pattern in BLOCK_PATTERNS.items():
+        if pattern.search(line):
+            return name
+
+    return None
+
+def _extract_trailing_comments(
+    lines: list[str]
+) -> list[str]:
+
+    comments = []
+
+    while lines and _is_comment_or_blank(lines[-1]):
+        comments.insert(0, lines.pop())
+
+    return comments
+
+def _is_meaningful_chunk(
+    lines: list[str]
+) -> bool:
+
+    content = "\n".join(lines).strip()
+
+    return len(content) > 40
+
 # Main parser
 
-class codebaseParser: 
+class CodebaseParser: 
     """
     Scans a MERN codebase and splits every .js file into semantic chunks
     wrapped as CustomDocuments for embedding into a vector database.
@@ -176,30 +210,37 @@ class codebaseParser:
         import_lines = _extract_imports(lines)
         if import_lines:
             blocks.append(_build_block(import_lines, "imports"))
+
+        filtered_lines = []
+
+        for line in lines:
+            if line not in import_lines:
+                filtered_lines.append(line)
+
+        lines = filtered_lines
         
         for line in lines:
             brace_depth += line.count("{") - line.count("}")
-        
-            matched_type = None
 
-            #seatching for pattern
-            for name,pattern in BLOCK_PATTERNS.items():
-                if pattern.search(line):
-                    matched_type = name
-                    break
-            
-            if matched_type and current_lines and brace_depth <= 0:
-                #Peel trailing comments off the current block and carry them into the next one
+            matched_type = _get_block_type(line)
 
-                trailing_comments: list[str] = []
-                #current_lines[-1] this gives last item from currlines -1 means last in python
-                while current_lines and _is_comment_or_blank(current_lines[-1]):
-                    trailing_comments.insert(0, current_lines.pop())#yes python has pop function on a list
+            if matched_type and brace_depth <= 0:
 
-                if len("\n".join(current_lines).strip()) > 40:
-                    blocks.append(_build_block(current_lines, current_type))
-                
-                current_lines = trailing_comments
+                if current_lines:
+                    trailing_comments = _extract_trailing_comments(
+                        current_lines
+                    )
+
+                    if _is_meaningful_chunk(current_lines):
+                        blocks.append(
+                            _build_block(
+                                current_lines,
+                                current_type
+                            )
+                        )
+
+                    current_lines = trailing_comments
+
                 current_type = matched_type
 
             current_lines.append(line)
