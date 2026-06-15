@@ -10,10 +10,9 @@ from pathlib import Path
 from src.schemas import CustomDocument
 
 
-# =============================================================================
+
 # Block-boundary patterns
 # Each regex matches the first line of a distinct logical code block.
-# =============================================================================
 
 BLOCK_PATTERNS: dict[str, re.Pattern] = {
     # Express
@@ -81,28 +80,68 @@ def _is_comment_or_blank(line: str) -> bool:
 
 
 def _extract_imports(lines: list[str]) -> list[str]:
-    pattern = re.compile(r'^\s*(import |const .+ = require)')
-    return [line.strip() for line in lines if pattern.match(line)]
+    import_pattern = re.compile(
+        r'^\s*(import |const .+ = require)'
+    )
+
+    imports = []
+    for line in lines:
+        if import_pattern.match(line):
+            imports.append(line.strip())
+
+    return imports
 
 
 def _extract_function_name(content: str) -> str | None:
-    match = re.search(r'(const|function)\s+(\w+)\s*=?\s*(async\s*)?\(', content)
-    return match.group(2) if match else None
+    function_pattern = re.compile(
+        r'(const|function)\s+(\w+)\s*=?\s*(async\s*)?\('
+    )
+
+    match = function_pattern.search(content)
+    if match is not None:
+        function_name = match.group(2)
+        return function_name
+    
+    return None
 
 
 def _extract_http_method(content: str) -> str | None:
-    match = re.search(r'router\.(get|post|put|patch|delete)', content)
-    return match.group(1).upper() if match else None
+    route_pattern = re.compile(
+        r'router\.(get|post|put|patch|delete)'
+    )
+
+    match = route_pattern.search(content)
+    if match is not None:
+        http_method = match.group(1)
+        return http_method.upper()
+
+    return None
 
 
 def _extract_route_path(content: str) -> str | None:
-    match = re.search(r'router\.\w+\s*\(\s*["\']([^"\']+)["\']', content)
-    return match.group(1) if match else None
+    route_pattern = re.compile(
+        r'router\.\w+\s*\(\s*["\']([^"\']+)["\']'
+    )
+
+    match = route_pattern.search(content)
+    if match:
+        route_path = match.group(1)
+        return route_path
+    
+    return None
 
 
 def _extract_model_name(content: str) -> str | None:
-    match = re.search(r'mongoose\.model\s*\(\s*["\'](\w+)["\']', content)
-    return match.group(1) if match else None
+    model_pattern = re.compile(
+        r'mongoose\.model\s*\(\s*["\'](\w+)["\']'
+    )
+
+    match = model_pattern.search(content)
+    if match is not None:
+        model_name = match.group(1)
+        return model_name
+    
+    return None
 
 
 def _build_block(lines: list[str], chunk_type: str) -> dict:
@@ -139,4 +178,84 @@ class codebaseParser:
             blocks.append(_build_block(import_lines, "imports"))
         
         for line in lines:
+            brace_depth += line.count("{") - line.count("}")
+        
+            matched_type = None
+
+            #seatching for pattern
+            for name,pattern in BLOCK_PATTERNS.items():
+                if pattern.search(line):
+                    matched_type = name
+                    break
             
+            if matched_type and current_lines and brace_depth <= 0:
+                #Peel trailing comments off the current block and carry them into the next one
+
+                trailing_comments: line[str] = []
+                #current_lines[-1] this gives last item from currlines -1 means last in python
+                while current_lines and _is_comment_or_blank(current_lines[-1]):
+                    trailing_comments.insert(0, current_lines.pop())#yes python has pop function on a list
+
+                if len("\n".join(current_lines).strip()) > 40:
+                    blocks.append(_build_block(current_lines, current_type))
+                
+                current_lines = trailing_comments
+                current_type = matched_type
+
+            current_lines.append(line)
+        
+        if len("\n".join(current_lines).strip()) > 40:
+            blocks.append(_build_block(current_lines, current_type))
+
+        return blocks
+    
+    def load_documents(self) -> list[CustomDocument]:
+        """Scans the codebase and returns all chunks as CustomDocuments."""
+        documents: list[CustomDocument] = []
+
+        for file_path in self.directory_path.rglob("*.js"):
+            should_ignore = False
+
+            for part in file_path.parts:
+                if part in self.ignore_dirs:
+                    should_ignore = True
+                    break
+
+            if should_ignore:
+                continue
+
+            try: 
+                raw_code = file_path.read_text(encoding="utf-8")
+                file_type = _classify_file(raw_code)
+                blocks  = self._split_into_blocks(raw_code)
+
+                for block in blocks:
+                    content = block["content"]
+
+                    raw_metadata = {
+                        "file_path" : str(file_path),
+                        "file_name" : file_path.name,#pathlib has a function to return file name
+                        "file_type": file_type,
+                        "chunk_type": block["chunk_type"],
+                        "function_name": _extract_function_name(content),
+                        "http_method": _extract_http_method(content),
+                        "route_path": _extract_route_path(content),
+                        "model_name": _extract_model_name(content)
+                    }
+
+                    clean_metadata = {}
+
+                    for key, value in raw_metadata.items():
+                        if value is not None:
+                            clean_metadata[key] = value
+                    
+                    doc = CustomDocument(
+                        content = content,
+                        metadata = clean_metadata
+                    )
+                    documents.append(doc)
+            
+            except Exception as e:
+                print(f"[CodebaseParser] Skipping '{file_path.name}': {e}")
+        
+        return documents
