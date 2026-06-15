@@ -191,7 +191,7 @@ class codebaseParser:
             if matched_type and current_lines and brace_depth <= 0:
                 #Peel trailing comments off the current block and carry them into the next one
 
-                trailing_comments: line[str] = []
+                trailing_comments: list[str] = []
                 #current_lines[-1] this gives last item from currlines -1 means last in python
                 while current_lines and _is_comment_or_blank(current_lines[-1]):
                     trailing_comments.insert(0, current_lines.pop())#yes python has pop function on a list
