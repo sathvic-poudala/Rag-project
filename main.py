@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from src.database import VectorDatabase
-from  src.parser import CodebaseParser
+from  src.chunker import CodebaseParser
 
 load_dotenv()
 
