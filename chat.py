@@ -14,7 +14,7 @@ Commands:
 """
 
 def run():
-    embedder = QueryEmbedder()
+    # embedder = QueryEmbedder()
     retriever = CodeRetriver()
     generator = Generator()
 
@@ -38,12 +38,12 @@ def run():
             print("Conversation history cleared.")
             continue
         
-        elif raw.startswith("\help"):
+        elif raw.startswith("/help"):
             print(HELP_TEXT)
             continue
 
         try:
-            chunks = retriever.search(raw, number_of_results=5)
+            chunks = retriever.search(raw, number_of_results=10)
 
             if not chunks:
                 print("No relevant code found. Try rephrasing your question.")

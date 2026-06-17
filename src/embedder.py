@@ -11,7 +11,8 @@ class QueryEmbedder:
         if not content:
             raise ValueError("content must be a non-empty string.")
         
-        return self.model.encode([content], show_progress_bar=True).tolist()
+        return self.model.encode([content]).tolist()
+    
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         # Embed multiple texts at once — used during ingestion
         return self.model.encode(texts, show_progress_bar=True).tolist()

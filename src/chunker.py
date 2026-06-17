@@ -51,7 +51,7 @@ FILE_TYPE_PATTERNS: dict[str, re.Pattern] = {
 
 # Chunks shorter than this are likely stubs, one-liners, or noise — skip them.
 # Named constant so the threshold is self-documenting and easy to tune in one place.
-MIN_CHUNK_LENGTH = 40
+MIN_CHUNK_LENGTH = 25
 
 
 def _classify_file(content: str) -> str:
@@ -67,13 +67,13 @@ def _is_comment_or_blank(line: str) -> bool:
     return stripped == "" or stripped.startswith(("//", "/*", "*/", "*"))
 
 
-def _extract_imports(lines: list[str]) -> list[str]:
-    import_pattern = re.compile(r'^\s*(import |const .+ = require)')
-    imports = []
-    for line in lines:
-        if import_pattern.match(line):
-            imports.append(line.strip())
-    return imports
+# def _extract_imports(lines: list[str]) -> list[str]:
+#     import_pattern = re.compile(r'^\s*(import |const .+ = require)')
+#     imports = []
+#     for line in lines:
+#         if import_pattern.match(line):
+#             imports.append(line.strip())
+#     return imports
 
 
 def _extract_function_name(content: str) -> str | None:
@@ -158,19 +158,17 @@ class CodebaseParser:
         current_type = 'unknown'
         brace_depth = 0
 
-        import_lines = _extract_imports(lines)
-        if import_lines:
-            blocks.append(_build_block(import_lines, "imports"))
+        # import_lines = _extract_imports(lines)
+        # if import_lines:
+        #     blocks.append(_build_block(import_lines, "imports"))
 
-        filtered_lines = []
+        # filtered_lines = []
+        # for line in lines:
+        #     if line.strip() not in import_lines:
+        #         filtered_lines.append(line)
+        # lines = filtered_lines
+
         for line in lines:
-            if line.strip() not in import_lines:
-                filtered_lines.append(line)
-        lines = filtered_lines
-
-        for line in lines:
-            brace_depth += line.count("{") - line.count("}")
-
             matched_type = _get_block_type(line)
             if matched_type and brace_depth <= 0:
                 if current_lines:
@@ -181,6 +179,10 @@ class CodebaseParser:
                 current_type = matched_type
                 current_lines.append(line)
                 brace_depth = 0
+            else:
+                current_lines.append(line)
+            
+            brace_depth += line.count("{") - line.count("}")
 
         if len("\n".join(current_lines).strip()) > MIN_CHUNK_LENGTH:
             blocks.append(_build_block(current_lines, current_type))

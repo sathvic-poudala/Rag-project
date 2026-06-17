@@ -1,6 +1,6 @@
 import os
 from groq import Groq
-from src.retriever import RetrievedChunk
+from src.schemas import RetrivedChunk
 
 
 # Codebase-aware system prompt — tells the LLM what context it's working with
@@ -20,12 +20,12 @@ class Generator:
         if not api_key:
             raise ValueError("GROQ_API_KEY not found. Make sure it's set in your .env file.")
         self.client = Groq(api_key=api_key)
-        self.model = "llama3-8b-8192"
+        self.model = "llama-3.3-70b-versatile"
 
     def generate(
             self, 
             query: str,
-            chunks: list[RetrievedChunk], 
+            chunks: list[RetrivedChunk], 
             history: list[dict]
     ):
         context_parts = []
@@ -43,7 +43,7 @@ class Generator:
         messages.extend(history)# Add past conversation turns
 
         augmented_query = f"CONTEXT:\n{context_text}\n\nQUESTION:\n{query}"
-        messages.append({{"role": "user", "content": augmented_query}})
+        messages.append({"role": "user", "content": augmented_query})
 
         stream = self.client.chat.completions.create(
             model=self.model,
@@ -52,6 +52,6 @@ class Generator:
         )
 
         for chunk_delta in stream:
-            token = chunk_delta[0].delta.content
+            token = chunk_delta.choices[0].delta.content
             if token:
                 yield token
