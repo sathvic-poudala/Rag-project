@@ -1,14 +1,7 @@
 import chromadb
 from src.embedder import QueryEmbedder
-from dataclasses import dataclass
-from typing import Any
+from src.schemas import RetrivedChunk
 
-@dataclass
-class RetrivedChunk:
-    content: str
-    metadata: dict[str,Any]
-    distance: float
-    rank: int #first in would be most related so it has higher rank
 
 class CodeRetriver:
 

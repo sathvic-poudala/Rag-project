@@ -10,3 +10,10 @@ class CustomDocument:
     content: str
 
     metadata: dict[str,Any] = field(default_factory=dict)
+
+@dataclass
+class RetrivedChunk:
+    content: str
+    metadata: dict[str,Any]
+    distance: float
+    rank: int #first in would be most related so it has higher rank
